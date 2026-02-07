@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Campaign Journal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Pico.css (clean, readable, elegant) -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+  >
+
+  <!-- D&D-flavored fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Crimson+Text:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --font-serif: "Crimson Text", serif;
+      --font-title: "Cinzel", serif;
+    }
+
+    body {
+      font-family: var(--font-serif);
+      background: radial-gradient(circle at top, #2b2b2b, #121212);
+      color: #f4f1ec;
+    }
+
+    main {
+      max-width: 900px;
+      margin: auto;
+    }
+
+    header h1 {
+      font-family: var(--font-title);
+      text-align: center;
+      letter-spacing: 0.08em;
+    }
+
+    article {
+      background: rgba(20, 20, 20, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    article h2 {
+      font-family: var(--font-title);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1.2rem;
+    }
+
+    article img {
+      max-width: 100%;
+      border-radius: 6px;
+      margin: 1rem 0;
+    }
+
+    article p {
+      line-height: 1.7;
+    }
+
+    article[data-date]::before {
+      content: attr(data-date);
+      display: block;
+      font-size: 0.85rem;
+      opacity: 0.7;
+      margin-bottom: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    footer {
+      text-align: center;
+      opacity: 0.6;
+      margin: 4rem 0 2rem;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <header>
+      <h1>Campaign Journal</h1>
+      <p style="text-align:center; opacity:0.8;">
+        Tales of heroes, monsters, and terrible decisions
+      </p>
+    </header>
+
+    <section id="journal"></section>
+
+    <footer>
+    </footer>
+  </main>
+
+<script>
+function base64ToBytes(b64) {
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+}
+
+async function deriveKey(password, salt, iterations) {
+  const enc = new TextEncoder();
+
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations,
+      hash: "SHA-256"
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["decrypt"]
+  );
+}
+
+async function decryptEnvelope(envelopeJson, password) {
+  const salt = base64ToBytes(envelopeJson.salt);
+  const iv = base64ToBytes(envelopeJson.iv);
+  const ciphertext = base64ToBytes(envelopeJson.ciphertext);
+
+  const key = await deriveKey(
+    password,
+    salt,
+    envelopeJson.iterations
+  );
+
+  const plaintextBuffer = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv },
+    key,
+    ciphertext
+  );
+
+  return new Uint8Array(plaintextBuffer);
+}
+
+function renderJournal(journalData, containerId = "journal") {
+  const container = document.getElementById(containerId);
+  if (!container || !journalData?.pages) return;
+
+  journalData.pages
+    .filter(page => page.type === "text" && page.text?.content)
+    .sort((a, b) => a.sort - b.sort)
+    .forEach(page => {
+      const html = page.text.content;
+
+      const temp = document.createElement("div");
+      temp.innerHTML = html;
+      const textOnly = temp.textContent.replace(/\s+/g, "").trim();
+      if (!textOnly) return;
+
+      const dateMatch = temp.textContent.match(/Date:\s*(\d{4}-\d{2}-\d{2})/);
+      const date = dateMatch ? dateMatch[1] : "";
+
+      const article = document.createElement("article");
+      article.id = page._id;
+      if (date) article.dataset.date = date;
+
+      if (page.name) {
+        const title = document.createElement("h2");
+        title.textContent = page.name;
+        article.appendChild(title);
+      }
+
+      const content = document.createElement("div");
+      content.innerHTML = html;
+      article.appendChild(content);
+
+      container.appendChild(article);
+    });
+}
+
+function getValueFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("v");
+}
+
+async function main() {
+   let journalDataEncrypted = 
+    JOURNAL_JSON_PLACEHOLDER;
+
+
+
+  const bytes = await decryptEnvelope(journalDataEncrypted, getValueFromUrl());
+
+  const text = new TextDecoder().decode(bytes);
+  const journalData = JSON.parse(text);
+
+  console.log(journalData);
+  renderJournal(journalData);
+}
+
+main();
+</script>
+</body>
+</html>
