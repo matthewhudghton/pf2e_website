@@ -3,3 +3,4 @@ node_modules/abstract-level
 node_modules
 tmp
 venv
+journal.json
